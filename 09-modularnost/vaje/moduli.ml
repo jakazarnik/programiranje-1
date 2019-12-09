@@ -52,10 +52,14 @@ module type NAT = sig
   type t
 
   val eq   : t -> t -> bool
+  val one : t
   val zero : t
-  (* Dodajte manjkajoče! *)
-  (* val to_int : t -> int *)
-  (* val of_int : int -> t *)
+  val add  : t -> t -> t (*sestevanje: sprejme stevilo, sprejme se eno st., vrne stevilo*)
+  val substract : t -> t -> t
+  val multiply : t -> t -> t
+  val to_int : t -> int 
+  val of_int : int -> t
+
 end
 
 (*----------------------------------------------------------------------------*]
@@ -70,9 +74,15 @@ end
 module Nat_int : NAT = struct
 
   type t = int
-  let eq x y = failwith "later"
+  let eq x y = x = y
   let zero = 0
+  let one = 1
   (* Dodajte manjkajoče! *)
+  let substract x y = x - y
+  let add x y = x + y
+  let multiply x y = x * y
+  let to_int x = x
+  let of_int x = x
 
 end
 
@@ -90,10 +100,36 @@ end
 
 module Nat_peano : NAT = struct
 
-  type t = unit (* To morate spremeniti! *)
-  let eq x y = failwith "later"
-  let zero = () (* To morate spremeniti! *)
-  (* Dodajte manjkajoče! *)
+  type t = Z | S of t
+  let rec eq x y = 
+    match x, y with
+    | Z, Z -> true 
+    | S x, S y -> eq x y
+    | _, _ -> false
+
+  let zero = Z
+
+  let one = S Z
+
+  let rec substract x y =
+    match x, y with
+    | S x, S y -> substract x y
+    | Z, _ -> Z
+    | _, Z -> x
+
+  let rec add x = function
+    | Z -> x
+    | S y -> S (add x y)
+
+  let rec multiply x = function
+    | Z -> Z 
+    | S y -> add x (multiply x y)
+
+  let rec to_int = function
+    | Z -> 0
+    | S x -> 1 + (to_int x)
+
+  let rec of_int x = if x <= 0 then Z else S (of_int (x + 1))
 
 end
 
@@ -118,7 +154,16 @@ end
  - : int = 4950
 [*----------------------------------------------------------------------------*)
 
-let sum_nat_100 (module Nat : NAT) = ()
+let sum_nat_100 (module Nat : NAT) =
+  let hundred = Nat.of_int 100 in
+  let rec sum_x_100 x =
+    if Nat.eq x hundred then
+      hundred
+    else
+      (* x + sum_x_100 (x = 1) *)
+      Nat.add x (sum_x_100 (Nat.add x Nat.one))
+  in
+  sum_x_100 Nat.zero |> Nat.to_int
 
 (*-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=*]
  Now we follow the fable told by John Reynolds in the introduction.
@@ -132,8 +177,20 @@ let sum_nat_100 (module Nat : NAT) = ()
 
 module type COMPLEX = sig
   type t
+  
+  val zero : t
+  val one : t
+  val i : t 
+
   val eq : t -> t -> bool
-  (* Dodajte manjkajoče! *)
+  
+  val neg : t -> t
+  val conj : t -> t
+
+  val add  : t -> t -> t 
+  val substract : t -> t -> t
+  val multiply : t -> t -> t
+
 end
 
 (*----------------------------------------------------------------------------*]
@@ -145,8 +202,20 @@ module Cartesian : COMPLEX = struct
 
   type t = {re : float; im : float}
 
-  let eq x y = failwith "later"
-  (* Dodajte manjkajoče! *)
+  let zero = {re = 0.; im = 0.}
+  let one = {re = 1.; im = 0.}
+  let i = {re = 0.; im = 1.}
+
+  let eq z w = z.re = w.re && z.im = w.im
+
+  let neg z = {re = -. z.re; im = -. z.im}
+  let conj z = {re = z.re; im = -. z.im}
+
+  let add x y = {re = x.re +. y.re; im = x.im +. y.im}
+  let multiply x y = 
+    let re = x.re *. y.re -. x.im *. y.im in
+    let im = x.im *. y.re +. x.re *. y.im in
+    {re; im}
 
 end
 
@@ -167,9 +236,48 @@ module Polar : COMPLEX = struct
   let rad_of_deg deg = (deg /. 180.) *. pi
   let deg_of_rad rad = (rad /. pi) *. 180.
 
-  let eq x y = failwith "later"
-  (* Dodajte manjkajoče! *)
+  let eq x y = 
+    (x.magn = 0. && y.magn = 0)
+    || (x.magn = y.magn && x.arg = y.arg)
+  
+  let zero = {magn = 0.; arg = 0.}
+  let one = {magn = 1.; arg = 0.}
+  let i = {magn = 1.; arg = 90.}
 
+  let neg {magn; arg} = {magn; arg = arg +. 180.}
+  let conj {magn; arg} = {magn; arg = (mod_float (arg +. 180.) 360.)}
+
+  let mul x y = {magn = x.magn *. y.magn ; arg = x.arg +. y.arg}
+
+  (* All of this for addition... *)
+  let re {magn; arg} = magn *. cos (rad arg)
+  let im {magn; arg} = magn *. sin (rad arg)
+
+  let arg re im =
+    let rad =
+      if re > 0. then atan (im /. re)
+      else if re < 0. && im >= 0. then atan (im /. re) +. pi
+      else if re < 0. && im < 0. then  atan (im /. re) -. pi
+      else if re = 0. && im > 0. then pi /. 2.
+      else if re = 0. && im < 0. then -.(pi /. 2.)
+      else 0.
+    in deg rad
+
+  let magn re im = sqrt (re *. re +. im *. im)
+
+  let add x y =
+    let square x = x *. x in
+    let magn = sqrt (square x.magn +. square y.magn +. 2. *. x.magn *. y.magn *. cos (y.arg -. x.arg))
+    and arg = x.arg +.
+                atan2 (y.magn *. sin (y.arg -. x.arg))
+                      (x.magn +. y.magn *. cos (y.arg -. x.arg)) in
+    {magn; arg}
+
+  let add' x y =
+    let z_re, z_im = re x +. re y, im x +. im y in
+    let arg = arg z_re z_im
+    and magn = magn z_re z_im
+    in {arg; magn}
 end
 
 (*-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=*]
@@ -198,4 +306,4 @@ end
  - : unit = ()
 [*----------------------------------------------------------------------------*)
 
-let count (module Dict : DICT) list = ()
+(* let count (module Dict : DICT) list = () *)
